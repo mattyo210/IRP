@@ -1,0 +1,166 @@
+#!/usr/bin/env python
+
+# Author : Chayapol Piyaphakdeesakun
+
+import rospy
+from sensor_msgs.msg import LaserScan
+from geometry_msgs.msg import Twist
+from nav_msgs.msg import Odometry
+import atexit
+import math
+
+pub = ''
+
+class Obstacle():
+	def __init__(self):
+		self.LIDAR_ERR = 0.05
+		self._cmd_pub = rospy.Publisher('cmd_vel', Twist, queue_size=10)
+		global pub
+		pub = self._cmd_pub
+		self.obstacle()
+
+	def get_scan(self):
+		msg = rospy.wait_for_message("scan", LaserScan)
+		self.scan_filter = []
+		for i in range(360):
+			self.scan_filter.append(msg.ranges[i])
+
+	def get_odom(self):
+		msg = rospy.wait_for_message("odom", Odometry)
+		self.odom_pos_x = msg.pose.pose.position.x
+		self.odom_pos_y = msg.pose.pose.position.y
+		self.odom_ori_z = msg.pose.pose.orientation.z
+
+	def obstacle(self):
+		self.twist = Twist()
+		
+		while not rospy.is_shutdown():
+			try:
+				self.set_operate()
+				
+			except KeyboardInterrupt:
+				stop()
+	
+		
+		
+		
+	def whatDoISee(self):
+		wallList=[]
+		self.get_scan()
+		up_right=list(filter(lambda x: x > 0.03 and x <= 5, self.scan_filter[:30]))
+		up_left=list(filter(lambda x: x > 0.03 and x <= 5, self.scan_filter[330:]))
+		up=up_right + up_left
+		right=list(filter(lambda x: x > 0.03 and x <= 5, self.scan_filter[60:120]))
+		down=list(filter(lambda x: x > 0.03 and x <= 5, self.scan_filter[150:210]))
+		left=list(filter(lambda x: x > 0.03 and x <= 5, self.scan_filter[240:300]))
+		wallList=[min(up) , min(right) , min(down) , min(left)]
+		#print(wallList)
+		walldict=dict(up=False,right=False,down=False,left=False)	
+		for i in range(len(wallList)):		
+			if wallList[i] < 0.15:
+				if i==0:
+					walldict["up"]=True
+				elif i==1:
+					walldict["left"]=True
+				elif i==2:
+					walldict["down"]=True
+				elif i==3:
+					walldict["right"]=True
+		#print(walldict)
+		#n=raw_input()
+		return wallList
+
+
+	def corridorFollow(self, distance):
+		print("distance:"+str(distance))
+		self.get_odom()
+		old_x = self.odom_pos_x
+ 		old_y = self.odom_pos_y
+		while True:
+			wall_list = []
+			wall_list = self.whatDoISee()
+			self.get_odom()
+			#variation_x, variation_y
+			new_x = self.odom_pos_x
+			new_y = self.odom_pos_y
+
+			dis_rem = distance - math.sqrt((new_x - old_x) **2 + (new_y - old_y) **2)
+			print("dis_rem:"+str(dis_rem))
+			if wall_list[0] < 0.15 or dis_rem <= 0.00:
+				self.twist.linear.x = 0.0
+				self.twist.angular.z = 0.0
+				self._cmd_pub.publish(self.twist)
+				if dis_rem < 0:
+					dis_rem = 0
+				return dis_rem
+
+			elif wall_list[1] > 0.15 and wall_list[3] > 0.15:
+				self.twist.angular.z = 0.0
+				self._cmd_pub.publish(self.twist)
+
+			elif math.fabs(wall_list[1] - wall_list[3]) > 0.03:
+				print("running")
+				if wall_list[1] > wall_list[3]:
+					self.twist.angular.z = 0.02
+				else:
+					self.twist.angular.z = -0.02
+				self._cmd_pub.publish(self.twist)
+
+			elif math.fabs(wall_list[1] - wall_list[3]) <= 0.05:
+				self.twist.angular.z = 0.0
+				self._cmd_pub.publish(self.twist)
+
+			self.twist.linear.x = 0.05
+			self._cmd_pub.publish(self.twist)
+
+
+	def gtnn(self,nodes):
+		remain=self.corridorFollow(nodes*30/100.0)
+
+
+	def turn_to(self,degree):
+		print(degree)
+		self.get_odom()
+		old_z=self.odom_ori_z
+		old_degree=math.degrees(old_z)
+		target_degree=(old_degree+degree) % 360
+		print("old:"+str(old_degree))
+		print("target:"+str(target_degree))
+		while True:
+			self.get_odom()
+			new_z=self.odom_ori_z
+			new_degree=math.degrees(new_z)
+			if degree > 0 and target_degree-new_degree <=0:
+				self.twist.angular.z = 0.0
+				self._cmd_pub.publish(self.twist)
+				return target_degree-new_degree
+			elif degree > 0 and new_degree-target_degree <=0:
+				self.twist.angular.z = 0.0
+				self._cmd_pub.publish(self.twist)
+				return target_degree-new_degree
+			elif degree > 0:
+				self.twist.angular.z = 0.3
+				self._cmd_pub.publish(self.twist)
+			elif degree < 0:
+				self.twist.angular.z = -0.3
+				self._cmd_pub.publish(self.twist)								
+
+def stop():
+	print('Stopping robot')
+	twist = Twist()
+	twist.linear.x = 0.0
+	twist.angular.z = 0.0
+	pub = rospy.Publisher('cmd_vel', Twist, queue_size=1)
+	pub.publish(twist)
+
+def main():
+	rospy.init_node('run')
+	rospy.on_shutdown(stop)
+
+	try:
+		obstacle = Obstacle()
+	except rospy.ROSInterruptException:
+		pass
+if __name__ == '__main__':
+	atexit.register(stop)
+	main()
