@@ -36,7 +36,9 @@ class Obstacle():
 		
 		while not rospy.is_shutdown():
 			try:
-				self.set_operate()
+				self.turn_to(90)
+				raw_input()
+				
 				
 			except KeyboardInterrupt:
 				stop()
@@ -70,7 +72,7 @@ class Obstacle():
 		#n=raw_input()
 		return wallList,walldict
 	
-	def gohome():
+	def gohome(self):
 		wall_list,wall_dict=self.whatDoISee()
 		if wall_dict["left"]==False and wall_dict["right"]==False:
 			self.turn_to(-90)
@@ -209,20 +211,23 @@ class Obstacle():
 			self.get_odom()
 			new_z=self.odom_ori_z
 			new_degree=math.degrees(new_z)
+			print(target_degree-new_degree)
 			if degree > 0 and target_degree-new_degree <=0:
+				print("1")
 				self.twist.angular.z = 0.0
 				self._cmd_pub.publish(self.twist)
-				return target_degree-new_degree
-			elif degree > 0 and new_degree-target_degree <=0:
+				break
+			elif degree < 0 and new_degree-target_degree <=0:
+				print("2")
 				self.twist.angular.z = 0.0
 				self._cmd_pub.publish(self.twist)
-				return target_degree-new_degree
-			elif degree > 0:
+				break
+			elif degree < 0:
 				self.twist.angular.z = 0.3
 				self._cmd_pub.publish(self.twist)
-			elif degree < 0:
+			elif degree > 0:
 				self.twist.angular.z = -0.3
-				self._cmd_pub.publish(self.twist)								
+				self._cmd_pub.publish(self.twist)			
 
 def stop():
 	print('Stopping robot')
