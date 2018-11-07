@@ -7,23 +7,19 @@ from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import MagneticField
-from turtlebot3_msgs.msg import Sound	
-from time import sleep
 import atexit
 import math
-import filetest
+import time
+import tf
+
 pub = ''
-allscandata=""
+
 class Obstacle():
 	def __init__(self):
 		self.LIDAR_ERR = 0.05
 		self._cmd_pub = rospy.Publisher('cmd_vel', Twist, queue_size=10)
-		self._sound_pub = rospy.Publisher('sound', Sound, queue_size=10)
 		global pub
-		allScanList=[]
 		pub = self._cmd_pub
-		global pub2
-		pub2 = self._sound_pub
 		self.obstacle()
 
 	def get_scan(self):
@@ -34,37 +30,239 @@ class Obstacle():
 
 	def get_odom(self):
 		msg = rospy.wait_for_message("odom", Odometry)
-		self.odom_pos_x = msg.pose.pose.position.x
-		self.odom_pos_y = msg.pose.pose.position.y
-		self.odom_ori_z = msg.pose.pose.orientation.z
+		#self.odom_pos_x = msg.pose.pose.position.x
+		#self.odom_pos_y = msg.pose.pose.position.y
 
+		self.odom_ori_w = msg.pose.pose.orientation.w
+		self.odom_ori_x = msg.pose.pose.orientation.x
+		self.odom_ori_y = msg.pose.pose.orientation.y
+		self.odom_ori_z = msg.pose.pose.orientation.z
+		return tf.transformations.euler_from_quaternion([self.odom_ori_x,self.odom_ori_y,self.odom_ori_z,self.odom_ori_w])
+
+	def get_mag(self):
+		msg = rospy.wait_for_message("magnetic_field", MagneticField)
+		self.mag_x = msg.magnetic_field.x
+		self.mag_y = msg.magnetic_field.y
+		self.mag_z = msg.magnetic_field.z
+		return math.atan2(self.mag_y, self.mag_x)/math.pi*180
 
 	def obstacle(self):
 		self.twist = Twist()
-		allScandata=""
+		
 		while not rospy.is_shutdown():
 			try:
-				scanlist =[]                                     
-				self.get_scan()
-
-				self.get_odom()
-				
-				#print("keisan:"+str(math.atan2(self.odom_pos_y, self.odom_pos_x)))
-				#print("ori:"+str(self.odom_ori_z))
-				scanlist += [self.odom_pos_x, self.odom_pos_y, self.odom_ori_z]
-				scanlist +=self.scan_filter
-				
-				scandata=" ".join(map(str, scanlist))+ "\n"
-
-				
-				global allscandata
-				allscandata +=scandata
+				print('test')
+				#angle = self.get_mag()
+				#print(angle)
+				(r,p,y) = self.get_odom()
+				print(r,p,y)
+				#self.turn_to(180)
+				#time.sleep(5)
+				#self.gohome()
+				#raw_input()
 				
 				
 			except KeyboardInterrupt:
-				filetest.scan_write(allscandata)
 				stop()
+	
+		
+		
+		
+	def whatDoISee(self):
+		wallList=[]
+		self.get_scan()
+		up_right=list(filter(lambda x: x > 0.03 and x <= 5, self.scan_filter[:30]))
+		up_left=list(filter(lambda x: x > 0.03 and x <= 5, self.scan_filter[330:]))
+		up=up_right + up_left
+		right=list(filter(lambda x: x > 0.03 and x <= 5, self.scan_filter[60:120]))
+		down=list(filter(lambda x: x > 0.03 and x <= 5, self.scan_filter[150:210]))
+		left=list(filter(lambda x: x > 0.03 and x <= 5, self.scan_filter[240:300]))
+		wallList=[min(up) , min(right) , min(down) , min(left)]
+		#print(wallList)
+		walldict=dict(up=False,right=False,down=False,left=False)	
+		for i in range(len(wallList)):		
+			if wallList[i] < 0.15:
+				if i==0:
+					walldict["up"]=True
+				elif i==1:
+					walldict["left"]=True
+				elif i==2:
+					walldict["down"]=True
+				elif i==3:
+					walldict["right"]=True
+		#print(walldict)
+		#n=raw_input()
+		return wallList,walldict
+	
+	def gohome(self):
+		wall_list,wall_dict=self.whatDoISee()
+		if wall_dict["left"]==False and wall_dict["right"]==False:
+			self.turn_to(-90)
+			self.GTNN(2)
+			self.turn_to(90)
+			self.GTNN(1)
+			wall_list,wall_dict=self.whatDoISee()
+			if wall_dict["right"]==False:
+				self.turn_to(90)
+				self.GTNN(1)
+				print("Goal!")
+			else :
+				self.turn_to(90)
+				self.turn_to(90)
+				self.GTNN(1)
+				self.turn_to(-90)
+				self.GTNN(2)
+				self.turn_to(-90)
+				self.GTNN(2)
+				self.turn_to(90)
+				self.GTNN(2)
+				self.turn_to(90)
+				self.GTNN(1)
+				self.turn_to(90)
+				self.GTNN(1)
+				print("Goal!")
 
+		elif wall_dict["left"]==False:
+			self.turn_to(-90)
+			self.GTNN(1)
+			wall_list,wall_dict=self.whatDoISee()
+			if wall_dict["right"]==False:
+				self.turn_to(90)
+				self.GTNN(1)
+				print("Goal!")
+
+			else :
+				self.turn_to(90)
+				self.turn_to(90)
+				self.GTNN(1)
+				self.turn_to(-90)
+				self.GTNN(2)
+				self.turn_to(-90)
+				self.GTNN(2)
+				self.turn_to(90)
+				self.GTNN(2)
+				self.turn_to(90)
+				self.GTNN(1)
+				self.turn_to(90)
+				self.GTNN(1)
+				print("Goal!")
+
+		else:
+			self.GTNN(4)
+			self.turn_to(90)
+			self.GTNN(1)
+			wall_list,wall_dict=self.whatDoISee()
+			if wall_dict["right"]==False:
+				self.turn_to(90)
+				self.GTNN(1)
+				print("Goal!")
+
+			else :
+				self.turn_to(90)
+				self.turn_to(90)
+				self.GTNN(1)
+				self.turn_to(-90)
+				self.GTNN(2)
+				self.turn_to(-90)
+				self.GTNN(2)
+				self.turn_to(90)
+				self.GTNN(2)
+				self.turn_to(90)
+				self.GTNN(1)
+				self.turn_to(90)
+				self.GTNN(1)
+				print("Goal!")					
+
+
+	def corridorFollow(self, distance):
+		print("distance:"+str(distance))
+		self.get_odom()
+		old_x = self.odom_pos_x
+ 		old_y = self.odom_pos_y
+		while True:
+			wall_list = []
+			wall_list,walldict = self.whatDoISee()
+			self.get_odom()
+			#variation_x, variation_y
+			new_x = self.odom_pos_x
+			new_y = self.odom_pos_y
+
+			dis_rem = distance - math.sqrt((new_x - old_x) **2 + (new_y - old_y) **2)
+			print("dis_rem:"+str(dis_rem))
+			if wall_list[0] < 0.15 or dis_rem <= 0.00:
+				self.twist.linear.x = 0.0
+				self.twist.angular.z = 0.0
+				self._cmd_pub.publish(self.twist)
+				if dis_rem < 0:
+					dis_rem = 0
+				return dis_rem
+
+			elif wall_list[1] > 0.15 and wall_list[3] > 0.15:
+				self.twist.angular.z = 0.0
+				self._cmd_pub.publish(self.twist)
+
+			elif math.fabs(wall_list[1] - wall_list[3]) > 0.03:
+				print("running")
+				if wall_list[1] > wall_list[3]:
+					self.twist.angular.z = 0.02
+				else:
+					self.twist.angular.z = -0.02
+				self._cmd_pub.publish(self.twist)
+
+			elif math.fabs(wall_list[1] - wall_list[3]) <= 0.03:
+				self.twist.angular.z = 0.0
+				self._cmd_pub.publish(self.twist)
+
+			self.twist.linear.x = 0.05
+			self._cmd_pub.publish(self.twist)
+
+
+	def GTNN(self,nodes):
+		remain=self.corridorFollow(nodes*30/100.0)
+
+
+	def turn_to(self,degree):
+		print(degree)
+
+		self.get_odom()
+		old_z = self.odom_ori_z
+
+		if old_z < 0:
+			old_z = old_z * -180
+		elif old_z > 0:
+			old_z = 360 - (old_z * 180)
+
+		#old_degree = math.degrees(old_z)
+		old_degree = old_z		
+		target_degree = (old_degree+degree) % 360
+		print("old:"+str(old_degree))
+		print("target:"+str(target_degree))
+
+		while True:
+			self.get_odom()
+			new_z = self.odom_ori_z
+			if new_z < 0:
+				new_z = new_z * -180
+			elif new_z > 0:
+				new_z = 360 - (new_z * 180)
+				
+
+			#new_degree = math.degrees(new_z)
+			print("new_z"+str(new_z))
+			#print("tar:"+str(target_degree))
+			#print("new:"+str(new_degree))
+
+			if target_degree-0.5 < new_z < target_degree+0.5:
+				#print("1")
+				self.twist.angular.z = 0.0
+				self._cmd_pub.publish(self.twist)
+				break
+			elif degree > 0:
+				self.twist.angular.z = -0.10
+				self._cmd_pub.publish(self.twist)
+			elif degree < 0:
+				self.twist.angular.z = 0.10
+				self._cmd_pub.publish(self.twist)			
 
 def stop():
 	print('Stopping robot')
@@ -73,7 +271,7 @@ def stop():
 	twist.angular.z = 0.0
 	pub = rospy.Publisher('cmd_vel', Twist, queue_size=1)
 	pub.publish(twist)
-	
+
 def main():
 	rospy.init_node('run')
 	rospy.on_shutdown(stop)
