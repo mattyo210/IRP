@@ -68,7 +68,86 @@ class Obstacle():
 					walldict["right"]=True
 		#print(walldict)
 		#n=raw_input()
-		return wallList
+		return wallList,walldict
+	
+	def gohome():
+		wall_list,wall_dict=self.whatDoISee()
+		if wall_dict["left"]==False and wall_dict["right"]==False:
+			self.turn_to(-90)
+			self.GTNN(2)
+			self.turn_to(90)
+			self.GTNN(1)
+			wall_list,wall_dict=self.whatDoISee()
+			if wall_dict["right"]==False:
+				self.turn_to(90)
+				self.GTNN(1)
+				print("Goal!")
+			else :
+				self.turn_to(90)
+				self.turn_to(90)
+				self.GTNN(1)
+				self.turn_to(-90)
+				self.GTNN(2)
+				self.turn_to(-90)
+				self.GTNN(2)
+				self.turn_to(90)
+				self.GTNN(2)
+				self.turn_to(90)
+				self.GTNN(1)
+				self.turn_to(90)
+				self.GTNN(1)
+				print("Goal!")
+
+		elif wall_dict["left"]==False:
+			self.turn(-90)
+			self.GTNN(1)
+			wall_list,wall_dict=self.whatDoISee()
+			if wall_dict["right"]==False:
+				self.turn_to(90)
+				self.GTNN(1)
+				print("Goal!")
+
+			else :
+				self.turn_to(90)
+				self.turn_to(90)
+				self.GTNN(1)
+				self.turn_to(-90)
+				self.GTNN(2)
+				self.turn_to(-90)
+				self.GTNN(2)
+				self.turn_to(90)
+				self.GTNN(2)
+				self.turn_to(90)
+				self.GTNN(1)
+				self.turn_to(90)
+				self.GTNN(1)
+				print("Goal!")
+
+		else:
+			self.GTNN(4)
+			self.turn_to(90)
+			self.GTNN(1)
+			wall_list,wall_dict=self.whatDoISee()
+			if wall_dict["right"]==False:
+				self.turn_to(90)
+				self.GTNN(1)
+				print("Goal!")
+
+			else :
+				self.turn_to(90)
+				self.turn_to(90)
+				self.GTNN(1)
+				self.turn_to(-90)
+				self.GTNN(2)
+				self.turn_to(-90)
+				self.GTNN(2)
+				self.turn_to(90)
+				self.GTNN(2)
+				self.turn_to(90)
+				self.GTNN(1)
+				self.turn_to(90)
+				self.GTNN(1)
+				print("Goal!")					
 
 
 	def corridorFollow(self, distance):
@@ -78,7 +157,7 @@ class Obstacle():
  		old_y = self.odom_pos_y
 		while True:
 			wall_list = []
-			wall_list = self.whatDoISee()
+			wall_list,walldict = self.whatDoISee()
 			self.get_odom()
 			#variation_x, variation_y
 			new_x = self.odom_pos_x
