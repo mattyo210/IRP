@@ -1,0 +1,244 @@
+#!/usr/bin/env python
+
+# Author : Chayapol Piyaphakdeesakun
+
+import rospy
+from sensor_msgs.msg import LaserScan
+from geometry_msgs.msg import Twist
+from nav_msgs.msg import Odometry
+from sensor_msgs.msg import MagneticField
+import atexit
+import math
+import time
+import tf
+
+pub = ''
+
+class Obstacle():
+	def __init__(self):
+		self.LIDAR_ERR = 0.05
+		self._cmd_pub = rospy.Publisher('cmd_vel', Twist, queue_size=10)
+		global pub
+		pub = self._cmd_pub
+		self.obstacle()
+
+	def get_scan(self):
+		msg = rospy.wait_for_message("scan", LaserScan)
+		self.scan_filter = []
+		for i in range(360):
+			self.scan_filter.append(msg.ranges[i])
+
+	def get_odom(self):
+		msg = rospy.wait_for_message("odom", Odometry)
+		self.odom_pos_x = msg.pose.pose.position.x
+		self.odom_pos_y = msg.pose.pose.position.y
+
+		self.odom_ori_w = msg.pose.pose.orientation.w
+		self.odom_ori_x = msg.pose.pose.orientation.x
+		self.odom_ori_y = msg.pose.pose.orientation.y
+		self.odom_ori_z = msg.pose.pose.orientation.z
+		return tf.transformations.euler_from_quaternion([self.odom_ori_x,self.odom_ori_y,self.odom_ori_z,self.odom_ori_w])
+
+	def get_mag(self):
+		msg = rospy.wait_for_message("magnetic_field", MagneticField)
+		self.mag_x = msg.magnetic_field.x
+		self.mag_y = msg.magnetic_field.y
+		self.mag_z = msg.magnetic_field.z
+		return math.atan2(self.mag_y, self.mag_x)/math.pi*180
+
+	def obstacle(self):
+		self.twist = Twist()
+		
+		while not rospy.is_shutdown():
+			try:
+				#print('test')
+				#(r,p,y) = self.get_odom()
+				#print(r,p,y)
+				#print("degree: "+str(deg))
+
+				#self.turn_to(90)
+				#time.sleep(5)
+				#self.gohome()
+				self.uniPlan()
+				#raw_input()
+				
+				
+			except KeyboardInterrupt:
+				stop()
+	
+	def uniPlan(self):
+		wall_list,wall_dict=self.whatDoISee()
+
+		if wall_dict["up"] == False and wall_dict["left"] == False and wall_dict["right"] == True and wall_dict["down"] == False:
+			self.turn_to(-90)
+
+		elif wall_dict["up"] == False and wall_dict["left"] == True and wall_dict["right"] == False and wall_dict["down"] == False:
+			self.GTNN(1)
+
+		elif wall_dict["up"] == True and wall_dict["left"] == False and wall_dict["right"] == False and wall_dict["down"] == False:
+			self.turn_to(90)
+
+		elif wall_dict["up"] == False and wall_dict["left"] == False and wall_dict["right"] == False and wall_dict["down"] == True:
+			self.GTNN(1)
+
+		elif wall_dict["up"] == True and wall_dict["left"] == False and wall_dict["right"] == False and wall_dict["down"] == True:
+			self.turn_to(90)
+
+		elif wall_dict["up"] == False and wall_dict["left"] == True and wall_dict["right"] == True and wall_dict["down"] == False:
+			self.GTNN(1)
+
+		elif wall_dict["up"] == False and wall_dict["left"] == True and wall_dict["right"] == False and wall_dict["down"] == True:
+			self.GTNN(1)
+
+		elif wall_dict["up"] == False and wall_dict["left"] == False and wall_dict["right"] == True and wall_dict["down"] == True:
+			self.GTNN(1)
+
+		elif wall_dict["up"] == True and wall_dict["left"] == False and wall_dict["right"] == True and wall_dict["down"] == False:
+			self.turn_to(-90)
+
+		elif wall_dict["up"] == True and wall_dict["left"] == True and wall_dict["right"] == False and wall_dict["down"] == False:
+			self.turn_to(90)
+
+		elif wall_dict["up"] == True and wall_dict["left"] == True and wall_dict["right"] == True and wall_dict["down"] == False:
+			print("-----Goal-----")
+		else :
+			print("-----Goal-----")
+			
+		
+		
+	def whatDoISee(self):
+		wallList=[]
+		self.get_scan()
+		up_right=list(filter(lambda x: x > 0.03 and x <= 5, self.scan_filter[:30]))
+		up_left=list(filter(lambda x: x > 0.03 and x <= 5, self.scan_filter[330:]))
+		up=up_right + up_left
+		right=list(filter(lambda x: x > 0.03 and x <= 5, self.scan_filter[60:120]))
+		down=list(filter(lambda x: x > 0.03 and x <= 5, self.scan_filter[150:210]))
+		left=list(filter(lambda x: x > 0.03 and x <= 5, self.scan_filter[240:300]))
+		wallList=[sum(up)/len(up) , sum(right)/len(right) , sum(down)/len(down) , sum(left)/len(left)]
+		print(wallList)
+		walldict=dict(up=False,right=False,down=False,left=False)	
+		for i in range(len(wallList)):		
+			if wallList[i] < 0.3: # 0.15
+				if i==0:
+					walldict["up"]=True
+				elif i==1:
+					walldict["left"]=True
+				elif i==2:
+					walldict["down"]=True
+				elif i==3:
+					walldict["right"]=True
+		print(walldict)
+		#n=raw_input()
+		return wallList,walldict				
+
+
+	def corridorFollow(self, distance):
+		#print("distance:"+str(distance))
+		self.get_odom()
+		old_x = self.odom_pos_x
+ 		old_y = self.odom_pos_y
+		while True:
+			wall_list = []
+			wall_list,walldict = self.whatDoISee()
+			self.get_odom()
+			#variation_x, variation_y
+			new_x = self.odom_pos_x
+			new_y = self.odom_pos_y
+
+			dis_rem = distance - math.sqrt((new_x - old_x) **2 + (new_y - old_y) **2)
+			#print("dis_rem:"+str(dis_rem))
+			if wall_list[0] < 0.15 or dis_rem <= 0.00:
+				self.twist.linear.x = 0.0
+				self.twist.angular.z = 0.0
+				self._cmd_pub.publish(self.twist)
+				if dis_rem < 0:
+					dis_rem = 0
+				return dis_rem
+
+			elif wall_list[1] > 0.15 or wall_list[3] > 0.15:
+				self.twist.angular.z = 0.0
+				self._cmd_pub.publish(self.twist)
+
+			elif math.fabs(wall_list[1] - wall_list[3]) > 0.02:
+				print("running")
+				if wall_list[1] > wall_list[3]:
+					self.twist.angular.z = 0.05
+				else:
+					self.twist.angular.z = -0.05  #0.02
+				self._cmd_pub.publish(self.twist)
+
+			elif math.fabs(wall_list[1] - wall_list[3]) <= 0.03:
+				self.twist.angular.z = 0.0
+				self._cmd_pub.publish(self.twist)
+
+			self.twist.linear.x = 0.05
+			self._cmd_pub.publish(self.twist)
+
+
+	def GTNN(self,nodes):
+		remain=self.corridorFollow(nodes*30/100.0)
+
+
+	def turn_to(self,degree):
+		print(degree)
+		self.corridorFollow(-5)
+		time.sleep(1)
+
+		(r,p,y) = self.get_odom()
+		if y <= 0:
+			old_degree = math.degrees(y*(-1))
+		elif y > 0:
+			old_degree = math.degrees(2*math.pi - y)
+		#else:
+			#old_degree = math.degrees(y)
+		
+		target_degree = (old_degree + degree) % 360
+
+		print("old:"+str(old_degree))
+		print("target:"+str(target_degree))
+
+		while True:
+			(r,p,y) = self.get_odom()
+			if y < 0:
+				new_degree = math.degrees(y*(-1))
+			elif y > 0:
+				new_degree = math.degrees(2*math.pi - y)
+			else:
+				new_degree = math.degrees(y)
+				
+			#print("new_degree:"+str(new_degree))
+
+			if target_degree - 2.0 < new_degree < target_degree + 2.0:
+				#print("stop")
+				self.twist.angular.z = 0.0
+				self._cmd_pub.publish(self.twist)
+				break
+			elif degree > 0:
+				#print("turn right")
+				self.twist.angular.z = -0.20
+				self._cmd_pub.publish(self.twist)
+			elif degree < 0:
+				#print("turn left")
+				self.twist.angular.z = 0.20
+				self._cmd_pub.publish(self.twist)			
+
+def stop():
+	print('Stopping robot')
+	twist = Twist()
+	twist.linear.x = 0.0
+	twist.angular.z = 0.0
+	pub = rospy.Publisher('cmd_vel', Twist, queue_size=1)
+	pub.publish(twist)
+
+def main():
+	rospy.init_node('run')
+	rospy.on_shutdown(stop)
+
+	try:
+		obstacle = Obstacle()
+	except rospy.ROSInterruptException:
+		pass
+if __name__ == '__main__':
+	atexit.register(stop)
+	main()
