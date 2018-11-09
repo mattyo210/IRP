@@ -20,6 +20,9 @@ class Obstacle():
 		self._cmd_pub = rospy.Publisher('cmd_vel', Twist, queue_size=10)
 		global pub
 		pub = self._cmd_pub
+		# Count the wall is only left
+		global count
+		count = 0
 		self.obstacle()
 
 	def get_scan(self):
@@ -51,60 +54,67 @@ class Obstacle():
 		
 		while not rospy.is_shutdown():
 			try:
-				#print('test')
-				#(r,p,y) = self.get_odom()
-				#print(r,p,y)
-				#print("degree: "+str(deg))
-
-				#self.turn_to(90)
-				#time.sleep(5)
-				#self.gohome()
 				self.uniPlan()
 				#raw_input()
-				
 				
 			except KeyboardInterrupt:
 				stop()
 	
+
 	def uniPlan(self):
+		# Count the wall is only left
+		global count
 		wall_list,wall_dict=self.whatDoISee()
 
 		if wall_dict["up"] == False and wall_dict["left"] == False and wall_dict["right"] == True and wall_dict["down"] == False:
+			count = 0
 			self.turn_to(-90)
 
 		elif wall_dict["up"] == False and wall_dict["left"] == True and wall_dict["right"] == False and wall_dict["down"] == False:
-			self.GTNN(1)
+			count = count + 1
+			if count ==2:
+				self.turn_to(90)
+			else:
+				self.GTNN(1)
 
 		elif wall_dict["up"] == True and wall_dict["left"] == False and wall_dict["right"] == False and wall_dict["down"] == False:
+			count = 0
 			self.turn_to(90)
 
 		elif wall_dict["up"] == False and wall_dict["left"] == False and wall_dict["right"] == False and wall_dict["down"] == True:
+			count = 0
 			self.GTNN(1)
 
 		elif wall_dict["up"] == True and wall_dict["left"] == False and wall_dict["right"] == False and wall_dict["down"] == True:
+			count = 0
 			self.turn_to(90)
 
 		elif wall_dict["up"] == False and wall_dict["left"] == True and wall_dict["right"] == True and wall_dict["down"] == False:
+			count = 0
 			self.GTNN(1)
 
 		elif wall_dict["up"] == False and wall_dict["left"] == True and wall_dict["right"] == False and wall_dict["down"] == True:
 			self.GTNN(1)
 
 		elif wall_dict["up"] == False and wall_dict["left"] == False and wall_dict["right"] == True and wall_dict["down"] == True:
+			count = 0
 			self.GTNN(1)
 
 		elif wall_dict["up"] == True and wall_dict["left"] == False and wall_dict["right"] == True and wall_dict["down"] == False:
+			count = 0
 			self.turn_to(-90)
 
 		elif wall_dict["up"] == True and wall_dict["left"] == True and wall_dict["right"] == False and wall_dict["down"] == False:
+			count = 0
 			self.turn_to(90)
 
-		elif wall_dict["up"] == True and wall_dict["left"] == True and wall_dict["right"] == True and wall_dict["down"] == False:
-			print("-----Goal-----")
+		#elif wall_dict["up"] == True and wall_dict["left"] == True and wall_dict["right"] == True and wall_dict["down"] == False:
+			#count = 0
+			#print("-----Goal-----")
 		else :
+			count = 0
 			print("-----Goal-----")
-			
-		
+				
 		
 	def whatDoISee(self):
 		wallList=[]
@@ -113,10 +123,10 @@ class Obstacle():
 		up_left=list(filter(lambda x: x > 0.03 and x <= 5, self.scan_filter[330:]))
 		up=up_right + up_left
 		right=list(filter(lambda x: x > 0.03 and x <= 5, self.scan_filter[60:120]))
-		down=list(filter(lambda x: x > 0.03 and x <= 5, self.scan_filter[150:210]))
+		down=list(filter(lambda x: x > 0.0 and x <= 5, self.scan_filter[150:210]))
 		left=list(filter(lambda x: x > 0.03 and x <= 5, self.scan_filter[240:300]))
 		wallList=[sum(up)/len(up) , sum(right)/len(right) , sum(down)/len(down) , sum(left)/len(left)]
-		print(wallList)
+		#print(wallList)
 		walldict=dict(up=False,right=False,down=False,left=False)	
 		for i in range(len(wallList)):		
 			if wallList[i] < 0.3: # 0.15
@@ -128,7 +138,7 @@ class Obstacle():
 					walldict["down"]=True
 				elif i==3:
 					walldict["right"]=True
-		print(walldict)
+		#print(walldict)
 		#n=raw_input()
 		return wallList,walldict				
 
@@ -148,7 +158,7 @@ class Obstacle():
 
 			dis_rem = distance - math.sqrt((new_x - old_x) **2 + (new_y - old_y) **2)
 			#print("dis_rem:"+str(dis_rem))
-			if wall_list[0] < 0.15 or dis_rem <= 0.00:
+			if wall_list[0] < 0.15 or dis_rem <= 0.02: # 0.00
 				self.twist.linear.x = 0.0
 				self.twist.angular.z = 0.0
 				self._cmd_pub.publish(self.twist)
@@ -181,9 +191,7 @@ class Obstacle():
 
 
 	def turn_to(self,degree):
-		print(degree)
-		self.corridorFollow(-5)
-		time.sleep(1)
+		#print(degree)
 
 		(r,p,y) = self.get_odom()
 		if y <= 0:
@@ -195,8 +203,8 @@ class Obstacle():
 		
 		target_degree = (old_degree + degree) % 360
 
-		print("old:"+str(old_degree))
-		print("target:"+str(target_degree))
+		#print("old:"+str(old_degree))
+		#print("target:"+str(target_degree))
 
 		while True:
 			(r,p,y) = self.get_odom()
@@ -209,7 +217,7 @@ class Obstacle():
 				
 			#print("new_degree:"+str(new_degree))
 
-			if target_degree - 2.0 < new_degree < target_degree + 2.0:
+			if target_degree - 2.5 < new_degree < target_degree + 2.5:
 				#print("stop")
 				self.twist.angular.z = 0.0
 				self._cmd_pub.publish(self.twist)
