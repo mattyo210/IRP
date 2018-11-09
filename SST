@@ -8,6 +8,7 @@ from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 import atexit
 import math
+import tf
 import pandas as pd
 import numpy as np
 
@@ -31,7 +32,12 @@ class Obstacle():
 		msg = rospy.wait_for_message("odom", Odometry)
 		self.odom_pos_x = msg.pose.pose.position.x
 		self.odom_pos_y = msg.pose.pose.position.y
+
+		self.odom_ori_w = msg.pose.pose.orientation.w
+		self.odom_ori_x = msg.pose.pose.orientation.x
+		self.odom_ori_y = msg.pose.pose.orientation.y
 		self.odom_ori_z = msg.pose.pose.orientation.z
+		return tf.transformations.euler_from_quaternion([self.odom_ori_x,self.odom_ori_y,self.odom_ori_z,self.odom_ori_w])
 
 	def obstacle(self):
 		self.twist = Twist()
@@ -46,56 +52,60 @@ class Obstacle():
 	def sst(self):
 		stateData = pd.read_csv("/home/mattyo/catkin_ws/src/robot/nodes/Wall.csv", sep = ',')
 		state_set=stateData.state.values.tolist()
-		print(state_set)
 		goal=False
+		i=0
 		while goal==False:
-			wall_list,wall_dict=whatDoISee()
-			state_set=self.sees(walldict,state_set)
+			wall_list,wall_dict=self.whatDoISee()
+			state_set=self.sees(wall_dict,state_set)
+			print(state_set)
 			action=self.getAction(state_set)
-			if action!="stop":
-				self.doAction(action)
-				self.results(action,state_set)
+			self.doAction(action)
+			if action!="STOP":
+				state_set=self.results(action,state_set)
 			goal=self.atGoal(state_set)
 
 
 	def sees(self,wall_dict,state_set):
 		stateData = pd.read_csv("/home/mattyo/catkin_ws/src/robot/nodes/Wall.csv", sep = ',')
+		now=stateData[stateData.state.isin(state_set)]
+		print("stateset"+str(now))
 		now=stateData[(stateData.state.isin(state_set)) & (stateData.up==int(wall_dict["up"])) & (stateData.right==int(wall_dict["right"])) &(stateData.down==int(wall_dict["down"])) & (stateData.left==int(wall_dict["left"]))]
-		print("------------")
-		print(now)
-		print("====")
-		state_set=now.state.values.tolist()
+		print("-------wall-----")
 		print(state_set)
+		print(now)
+		print("==now==")
+		state_set=now.state.values.tolist()
 		return state_set
 
 	def getAction(self,state_set):
 		stateData = pd.read_csv("/home/mattyo/catkin_ws/src/robot/nodes/Wall.csv", sep = ',')
 		action=stateData[stateData.state==state_set[0]].Action.values[0]
-		print(action)
+		print("action "+str(action))
 		return action
 
-	def doAction(action):
+	def doAction(self,action):
 		if action=="GTNN 1":
 			self.GTNN(1)
 		elif action=="TURN 90":
 			self.turn_to(90)
 		elif action=="TURN -90":
 			self.turn_to(-90)
+		elif action=="STOP":
+			print("---Goal---")
 
 		
 	def results(self,action,state_set):
-		new=[]
 		print(state_set)
-		print("--------")
+		print("---results-----")
 		resultsData = pd.read_csv("/home/mattyo/catkin_ws/src/robot/nodes/State.csv", sep = ',')	
 		now=resultsData[(resultsData.state.isin(state_set)) & (resultsData.command==action)].result.values.tolist()
 		state_set=now
 		print(state_set)
+		return state_set
 
 	def atGoal(self,state_set):
 		goal=["31u","31r","31d","31l"]
-		if len(state_set)==1 and state_set in goal==True:
-			print("Goal")
+		if len(state_set)==1 and state_set[0] in goal:
 			return True
 		else:
 			return False
@@ -143,7 +153,7 @@ class Obstacle():
 
 			dis_rem = distance - math.sqrt((new_x - old_x) **2 + (new_y - old_y) **2)
 			#print("dis_rem:"+str(dis_rem))
-			if wall_list[0] < 0.15 or dis_rem <= 0.02: # 0.00
+			if wall_list[0] < 0.15 or dis_rem <= 0.01: # 0.00
 				self.twist.linear.x = 0.0
 				self.twist.angular.z = 0.0
 				self._cmd_pub.publish(self.twist)
@@ -151,16 +161,16 @@ class Obstacle():
 					dis_rem = 0
 				return dis_rem
 
-			elif wall_list[1] > 0.15 or wall_list[3] > 0.15:
+			elif wall_list[1] > 0.25 or wall_list[3] > 0.25:
 				self.twist.angular.z = 0.0
 				self._cmd_pub.publish(self.twist)
 
 			elif math.fabs(wall_list[1] - wall_list[3]) > 0.02:
 				print("running")
 				if wall_list[1] > wall_list[3]:
-					self.twist.angular.z = 0.05
+					self.twist.angular.z = 0.04
 				else:
-					self.twist.angular.z = -0.05  #0.02
+					self.twist.angular.z = -0.04  #0.02
 				self._cmd_pub.publish(self.twist)
 
 			elif math.fabs(wall_list[1] - wall_list[3]) <= 0.03:
@@ -234,8 +244,5 @@ def main():
 if __name__ == '__main__':
 	atexit.register(stop)
 	main()
-
 	
-
-
 
